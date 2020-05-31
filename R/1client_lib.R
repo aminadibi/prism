@@ -1,4 +1,9 @@
+# 2019.05.30
+#TODO: single-shot model call (without changing the session)
+
+
 thisSession <- new.env()
+
 
 
 
@@ -11,6 +16,8 @@ on_load<-function()
 
 
 
+
+#TODO: Delete
 check_model<-function(model_name)
 {
   call <- paste("http://", thisSession$url, "/ocpu/library/", thisSession$current_model,"/info", sep="")
@@ -31,28 +38,31 @@ check_model<-function(model_name)
 
 
 
+
+
 #' Checks to see if model is available in PRISM
 #'
 #' @param model_name tment benefit at that marker value
 #' @param address Server address. Default is "prism.resp.core.ubc.ca". Could be an IP address, for example: 122.103.54.12.
 #' @return 0 for sucess and 1 for error
 #' @export
-connect_to_model<-function(model_name, api_key="", address = "prism.resp.core.ubc.ca")
+connect_to_model<-function(api_key, model_name, address = "prism.resp.core.ubc.ca")
 #TODO: http:// at the beginning can be optional. Currently it must be absent otherwise error!;
 {
   on_load()
-  thisSession$api_key<-api_key
-  thisSession$session_id<-NULL
+  thisSession$api_key <- api_key
+  thisSession$session_id <- NULL
   thisSession$url <- address
   thisSession$current_model <- model_name
 
-  x<-PRISM_call("connect_to_model",api_key=api_key)
+
+  x<-PRISM_call(api_key,"connect_to_model")
 
   res<-process_input(x)
 
   if(res$error_code!=0) {message("There was an error in connecting to the model."); return(res$error_code) }
 
-  thisSession$session_id<-res$session_id
+  thisSession$session_id <- res$session_id
 
   message(res$description)
 
@@ -73,8 +83,8 @@ connect_to_model<-function(model_name, api_key="", address = "prism.resp.core.ub
 #' @export
 disconnect_from_model<-function()
 {
-  #fF this is a sessioned connection then the session id will be automatically passed so do not have to submit it!
-  x<-PRISM_call("disconnect_from_model")
+  #If this is a sessioned connection then the session id will be automatically passed so do not have to submit it!
+  x<-PRISM_call(thisSession$api_key,"disconnect_from_model")
 
   on_load()
 
@@ -93,12 +103,17 @@ disconnect_from_model<-function()
 
 
 
+
+
+
+
+
 #' Returns default PRISM model input
 #'
 #' @export
 get_default_input<-function()
 {
-  x<-PRISM_call("get_default_input")
+  x<-PRISM_call(thisSession$api_key,"get_default_input")
   return(x)
 }
 
@@ -112,7 +127,7 @@ get_default_input<-function()
 get_default_input_style<-function()
 {
   message("Current model is ", thisSession$current_model)
-  x<-PRISM_call("get_default_input_style")
+  x<-PRISM_call(thisSession$api_key,"get_default_input_style")
   out<-list()
   for (i in 1:length(x))
     out[[names(x[i])]]<-to_prism_input(x[[i]])
@@ -175,6 +190,11 @@ unprocess_input<-function(inp)
 
 
 
+
+
+
+
+
 #' Sets PRISM model inputs
 #'
 #' @return 0 for sucess and 1 for error
@@ -184,6 +204,8 @@ set_model_input<-function(input)
   message("Current model is ", thisSession$current_model)
   thisSession$input <- input
 }
+
+
 
 
 #' Returns PRISM model input
@@ -206,7 +228,7 @@ get_model_input<-function()
 get_output_structure<-function()
 {
   #message("Current model is ", thisSession$current_model)
-  x<-PRISM_call("get_output_structure")
+  x<-PRISM_call(thisSession$api_key,"get_output_structure")
 
   if(is.null(x)) return(NULL)
 
@@ -281,6 +303,13 @@ draw_plots<-function(plot_number=NULL)
 
 
 
+
+
+
+
+
+
+
 #' Executes PRISM model
 #'
 #' @param input required custom parameters for current model
@@ -290,24 +319,81 @@ model_run<-function(input=NULL)
 {
   thisSession$input<-input
 
-  res<-PRISM_call("prism_model_run", model_input=input)
+  res<-PRISM_call(thisSession$api_key,"prism_model_run", model_input=input)
 
   thisSession$output_location<-thisSession$last_location
   thisSession$output_list<-NULL
 
   thisSession$result<-res
 
-  #thisSession$model_output_objects<-PRISM_get_output_object_list()
+  return(res)
+}
 
-  #if(is.null(thisSession$output_structure))
-  #{
-  #  thisSession$output_structure<-generate_default_output_structure()
-  #}
 
-  #thisSession$output<-fetch_outputs()
+
+
+
+
+
+
+
+
+
+
+
+#' Executes PRISM model in async model
+#'
+#' @param input required custom parameters for current model
+#' @return 0 for sucess and 1 for error
+#' @export
+model_run_async<-function(input=NULL)
+{
+  thisSession$input<-input
+
+  res<-PRISM_call(thisSession$api_key, "prism_model_run_async", model_input=input)
+
+  thisSession$output_location<-thisSession$last_location
+  thisSession$output_list<-NULL
+
+  thisSession$result<-res
+
+  if(res$error_code==0)
+  {
+    thisSession$async_token<-res$async_token
+  }
 
   return(res)
 }
+
+
+
+
+
+
+
+
+#' Check the progress of async call
+#'
+#' @param input required custom parameters for current model
+#' @return 0 for sucess and 1 for error
+#' @export
+check_async_status<-function()
+{
+  async_token <- thisSession$async_token
+
+  res<-PRISM_call(thisSession$api_key, "prism_check_async_status", async_token=async_token)
+
+  return(res)
+}
+
+
+
+
+
+
+
+
+
 
 
 
@@ -386,22 +472,18 @@ generate_default_output_structure_l2<-function(root_element)
 
 
 #' @export
-PRISM_call<-function(func,...)
+PRISM_call<-function(api_key,func,...)
 {
   call <- paste("http://", thisSession$url, "/ocpu/library/",thisSession$current_model,"/R/gateway/json",sep="")
   message("Current model is ", thisSession$current_model)
 
   arg<-list(func=func, parms=...)
 
-  #If session id is available, use it; otherwise use API key itself.
   if(!is.null(thisSession$session_id) && thisSession$session_id!="")
   {
     arg<-c(session_id=thisSession$session_id,arg)
   }
-  else
-  {
-    if(is.null(arg$api_key)) arg<-c(api_key=thisSession$api_key,arg)
-  }
+
 
   message(paste("call is ", call))
 
